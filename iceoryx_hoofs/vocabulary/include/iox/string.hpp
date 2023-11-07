@@ -362,6 +362,14 @@ class string final
     /// @return a pointer to the char array of self
     const char* c_str() const noexcept;
 
+    /// @brief returns a pointer to the char array
+    ///
+    /// @return a pointer to the char array
+    char* data() noexcept;
+
+    /// @brief set the internal string lenght based on string data
+    void autoresize() noexcept;
+
     /// @brief returns the number of characters stored in the string
     ///
     /// @return the number of characters stored in the string

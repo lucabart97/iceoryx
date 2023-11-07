@@ -259,9 +259,29 @@ inline const char* string<Capacity>::c_str() const noexcept
 }
 
 template <uint64_t Capacity>
+inline char* string<Capacity>::data() noexcept
+{
+    return m_rawstring;
+}
+
+template <uint64_t Capacity>
 inline constexpr uint64_t string<Capacity>::size() const noexcept
 {
     return m_rawstringSize;
+}
+
+template <uint64_t Capacity>
+inline void string<Capacity>::autoresize() noexcept
+{
+    const uint64_t strSize{strnlen(m_rawstring, Capacity + 1U)};
+    if (Capacity < strSize)
+    {
+        IOX_LOG(DEBUG,
+                "autoresize failed. The given cstring is larger (" << strSize << ") than the capacity (" << Capacity
+                                                                   << ") of the fixed string.");
+        return;
+    }
+    m_rawstringSize = strSize;
 }
 
 template <uint64_t Capacity>
