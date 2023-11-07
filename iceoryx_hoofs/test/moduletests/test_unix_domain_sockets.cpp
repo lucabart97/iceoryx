@@ -15,6 +15,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#include "iox/string.hpp"
 #if !defined(_WIN32)
 #include "iceoryx_hoofs/internal/posix_wrapper/unix_domain_socket.hpp"
 #include "iceoryx_hoofs/posix_wrapper/posix_call.hpp"
@@ -38,6 +39,10 @@ using namespace iox::units;
 
 using sendCall_t = std::function<expected<void, IpcChannelError>(const std::string&)>;
 using receiveCall_t = std::function<expected<std::string, IpcChannelError>()>;
+
+using message_t = UnixDomainSocket::Message_t;
+using sendCallMsg_t = std::function<expected<void, IpcChannelError>(const message_t&)>;
+using receiveCallMsg_t = std::function<expected<void, IpcChannelError>(message_t&)>;
 
 // NOLINTJUSTIFICATION used only for test purposes
 // NOLINTNEXTLINE(hicpp-avoid-c-arrays, cppcoreguidelines-avoid-c-arrays)
@@ -199,6 +204,26 @@ TEST_F(UnixDomainSocket_test, SendOnServerLeadsToError)
 {
     ::testing::Test::RecordProperty("TEST_ID", "82721639-8514-410f-b761-54c9f519a6e4");
     sendOnServerLeadsToError([&](auto& msg) { return server.send(msg); });
+}
+
+void sendOnServerLeadsToErrorMsg(const sendCallMsg_t& send)
+{
+    message_t message{"Foo"};
+    auto result = send(message);
+    EXPECT_TRUE(result.has_error());
+    EXPECT_THAT(result.error(), Eq(IpcChannelError::INTERNAL_LOGIC_ERROR));
+}
+
+TEST_F(UnixDomainSocket_test, TimedSendOnServerLeadsToErrorMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "d2a4986a-afe7-49bc-b870-d1baf069aad2");
+    sendOnServerLeadsToErrorMsg([&](auto& msg) { return server.timedSend(msg, 1_ms); });
+}
+
+TEST_F(UnixDomainSocket_test, SendOnServerLeadsToErrorMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "82721639-8514-410f-b761-54c9f519a6e4");
+    sendOnServerLeadsToErrorMsg([&](auto& msg) { return server.send(msg); });
 }
 
 void successfulSendAndReceive(const std::vector<std::string>& messages,
@@ -373,6 +398,143 @@ TEST_F(UnixDomainSocket_test, SuccessfulCommunicationOfMultipleMessagesWithSendA
         [&]() { return server.timedReceive(1_ms); });
 }
 
+void successfulSendAndReceiveMsg(const std::vector<message_t>& messages,
+                              const sendCallMsg_t& send,
+                              const receiveCallMsg_t& receive)
+{
+    for (const auto& m : messages)
+    {
+        ASSERT_FALSE(send(m).has_error());
+    }
+
+    for (const auto& sentMessage : messages)
+    {
+        message_t msg;
+        auto receivedMessage = receive(msg);
+        ASSERT_FALSE(receivedMessage.has_error());
+        EXPECT_EQ(msg, sentMessage);
+    }
+}
+
+TEST_F(UnixDomainSocket_test, SuccessfulCommunicationOfNonEmptyMessageWithSendAndReceiveMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "69a2f9f4-2a4a-48e2-aa50-72b00e657f1d");
+    successfulSendAndReceiveMsg(
+        {"what's hypnotoads eye color?"},
+        [&](auto& msg) { return client.send(msg); },
+        [&](auto& msg) { return server.receive(msg); });
+}
+
+TEST_F(UnixDomainSocket_test, SuccessfulCommunicationOfNonEmptyMessageWithTimedSendAndReceiveMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "b5b2b116-04df-4ec8-ba2c-71ca2ff98b3a");
+    successfulSendAndReceiveMsg(
+        {"the earth is a disc on the back of elephants on the slimy back of hypnotoad - let's all hope that no "
+         "elephant slips."},
+        [&](auto& msg) { return client.timedSend(msg, 1_ms); },
+        [&](auto& msg) { return server.receive(msg); });
+}
+
+TEST_F(UnixDomainSocket_test, SuccessfulCommunicationOfNonEmptyMessageWithTimedSendAndTimedReceiveMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "7b5f4b19-4721-42e4-899f-9b61d5f2e467");
+    successfulSendAndReceiveMsg(
+        {"it is not the sun that rises, it is hypnotoad who is opening its eyes"},
+        [&](auto& msg) { return client.timedSend(msg, 1_ms); },
+        [&](auto& msg) { return server.timedReceive(msg, 1_ms); });
+}
+
+TEST_F(UnixDomainSocket_test, SuccessfulCommunicationOfNonEmptyMessageWithSendAndTimedReceiveMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "48dfea98-9b8f-4bc5-ba6b-b29229238c1c");
+    successfulSendAndReceiveMsg(
+        {"what is the most beautiful color in the world? it's hypnotoad."},
+        [&](auto& msg) { return client.send(msg); },
+        [&](auto& msg) { return server.timedReceive(msg, 1_ms); });
+}
+
+TEST_F(UnixDomainSocket_test, SuccessfulCommunicationOfEmptyMessageWithSendAndReceiveMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "1cbb2b57-5bde-4d36-b11d-879f55a313c0");
+    successfulSendAndReceiveMsg(
+        {""}, [&](auto& msg) { return client.send(msg); }, [&](auto& msg) { return server.receive(msg); });
+}
+
+TEST_F(UnixDomainSocket_test, SuccessfulCommunicationOfEmptyMessageWithTimedSendAndReceiveMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "1fecbbc7-762c-4dcd-b7c2-c195d29d4023");
+    successfulSendAndReceiveMsg(
+        {""}, [&](auto& msg) { return client.timedSend(msg, 1_ms); }, [&](auto& msg) { return server.receive(msg); });
+}
+
+TEST_F(UnixDomainSocket_test, SuccessfulCommunicationOfEmptyMessageWithTimedSendAndTimedReceiveMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "22d0ed9c-6ab1-4239-909e-41dccc0f9510");
+    successfulSendAndReceiveMsg(
+        {""}, [&](auto& msg) { return client.timedSend(msg, 1_ms); }, [&](auto& msg) { return server.timedReceive(msg, 1_ms); });
+}
+
+TEST_F(UnixDomainSocket_test, SuccessfulCommunicationOfEmptyMessageWithSendAndTimedReceiveMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "16ee1bee-67a0-4d2f-8f13-5fe6ca67f3b8");
+    successfulSendAndReceiveMsg(
+        {""}, [&](auto& msg) { return client.send(msg); }, [&](auto& msg) { return server.timedReceive(msg, 1_ms); });
+}
+
+TEST_F(UnixDomainSocket_test, SuccessfulCommunicationOfMultipleMessagesWithSendAndReceiveMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "d0dd293f-8dc5-493b-99bc-34859eaa7ca6");
+    successfulSendAndReceiveMsg(
+        {"Famous hypnotoad alike creators from around the world:",
+         "Zoich, proposed mascot for the winter olympics 2014",
+         "Ed Bighead",
+         "Jason Funderburker"},
+        [&](auto& msg) { return client.send(msg); },
+        [&](auto& msg) { return server.receive(msg); });
+}
+
+TEST_F(UnixDomainSocket_test, SuccessfulCommunicationOfMultipleMessagesWithTimedSendAndReceiveMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "92cb2d91-2fa8-4600-bb42-042cfe97de01");
+    successfulSendAndReceiveMsg(
+        {"Facts about hypnotoad",
+         "according to 'The Thief of Baghead' hypnotoad is divorced and has children",
+         "hypnotoad is shown in the open sequence in Simpsons - Treehouse of Horror XXIV",
+         "hypnotoad has its own tv show called: everyone loves hypnotoad",
+         "his homeworld is maybe Kif Krokers homeworld",
+         "he knows the answer to the ultimate question of life, the universe, and everything - just look deep into ",
+         "his eyes"},
+        [&](auto& msg) { return client.timedSend(msg, 1_ms); },
+        [&](auto& msg) { return server.receive(msg); });
+}
+
+TEST_F(UnixDomainSocket_test, SuccessfulCommunicationOfMultipleMessagesWithTimedSendAndTimedReceiveMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "31daf91d-1b98-400e-a29b-e43643962dcc");
+    successfulSendAndReceiveMsg(
+        {"hypnotoad was part of the german pop band Modern Talking and produced songs like",
+         "you're my, heart you're my seal",
+         "cheri cheri hypnotoad",
+         "brother hypno hypno toad",
+         "you are not alone hypnotoad is there for you"},
+        [&](auto& msg) { return client.timedSend(msg, 1_ms); },
+        [&](auto& msg) { return server.timedReceive(msg, 1_ms); });
+}
+
+TEST_F(UnixDomainSocket_test, SuccessfulCommunicationOfMultipleMessagesWithSendAndTimedReceiveMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "eb25f813-ab2d-40e4-a363-5e025a2d53c8");
+    successfulSendAndReceiveMsg(
+        {"most famous actors and politicians claim that the licked hypnotoad which was later the key to their "
+         "success",
+         "homer simpson licked hypnotoad before he was famous (Missionary Impossible)",
+         "but remember, always ask the toad before licking otherwise it is just rude",
+         "if the toad answers you the licking question, please consult David Hasselhof first or some other random "
+         "person"},
+        [&](auto& msg) { return client.send(msg); },
+        [&](auto& msg) { return server.timedReceive(msg, 1_ms); });
+}
+
 void unableToSendTooLongMessage(const sendCall_t& send)
 {
     std::string message(UnixDomainSocket::MAX_MESSAGE_SIZE + 1, 'x');
@@ -414,6 +576,28 @@ TEST_F(UnixDomainSocket_test, ReceivingOnClientLeadsToErrorWithTimedReceive)
     receivingOnClientLeadsToError([&] { return client.timedReceive(1_ms); });
 }
 
+// the current contract of the unix domain socket is that a server can only receive
+// and the client can only send
+void receivingOnClientLeadsToErrorMsg(const receiveCallMsg_t& receive)
+{
+    message_t msg;
+    auto result = receive(msg);
+    EXPECT_TRUE(result.has_error());
+    ASSERT_THAT(result.error(), Eq(IpcChannelError::INTERNAL_LOGIC_ERROR));
+}
+
+TEST_F(UnixDomainSocket_test, ReceivingOnClientLeadsToErrorWithReceiveMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "055b3e28-e958-43e7-ad9b-81a9702009cd");
+    receivingOnClientLeadsToErrorMsg([&](auto& msg) { return client.receive(msg); });
+}
+
+TEST_F(UnixDomainSocket_test, ReceivingOnClientLeadsToErrorWithTimedReceiveMsg)
+{
+    ::testing::Test::RecordProperty("TEST_ID", "f46991ff-29f5-4cf7-9d6d-d1d0b4da97dc");
+    receivingOnClientLeadsToErrorMsg([&](auto& msg) { return client.timedReceive(msg, 1_ms); });
+}
+
 // is not supported on mac os and behaves there like receive
 #if !defined(__APPLE__)
 TIMING_TEST_F(UnixDomainSocket_test, TimedReceiveBlocks, Repeat(5), [&] {
@@ -439,6 +623,39 @@ TIMING_TEST_F(UnixDomainSocket_test, TimedReceiveBlocksUntilMessageIsReceived, R
 
         TIMING_TEST_ASSERT_FALSE(msg.has_error());
         TIMING_TEST_EXPECT_TRUE(*msg == message);
+    });
+
+    this->waitForThread();
+    std::this_thread::sleep_for(WAIT_IN_MS);
+    TIMING_TEST_ASSERT_FALSE(client.send(message).has_error());
+    waitThread.join();
+})
+
+TIMING_TEST_F(UnixDomainSocket_test, TimedReceiveBlocksMsg, Repeat(5), [&] {
+    ::testing::Test::RecordProperty("TEST_ID", "5c43ae51-35ca-4e3e-b5bc-4261c80b7a4d");
+    auto start = std::chrono::steady_clock::now();
+    message_t msg;
+    auto result = server.timedReceive(msg,units::Duration::fromMilliseconds(WAIT_IN_MS.count()));
+    auto end = std::chrono::steady_clock::now();
+    TIMING_TEST_EXPECT_TRUE(end - start >= WAIT_IN_MS);
+
+    TIMING_TEST_ASSERT_TRUE(result.has_error());
+    TIMING_TEST_EXPECT_TRUE(result.error() == IpcChannelError::TIMEOUT);
+})
+
+TIMING_TEST_F(UnixDomainSocket_test, TimedReceiveBlocksUntilMessageIsReceivedMsg, Repeat(5), [&] {
+    ::testing::Test::RecordProperty("TEST_ID", "76df3d40-d420-4c5f-b82a-3bf8b684a21b");
+    message_t message = "asdasda";
+    std::thread waitThread([&] {
+        this->signalThreadReady();
+        auto start = std::chrono::steady_clock::now();
+        message_t msg;
+        auto result = server.timedReceive(msg, units::Duration::fromMilliseconds(WAIT_IN_MS.count() * 2));
+        auto end = std::chrono::steady_clock::now();
+        TIMING_TEST_EXPECT_TRUE(end - start >= WAIT_IN_MS);
+
+        TIMING_TEST_ASSERT_FALSE(result.has_error());
+        TIMING_TEST_EXPECT_TRUE(msg == message);
     });
 
     this->waitForThread();
