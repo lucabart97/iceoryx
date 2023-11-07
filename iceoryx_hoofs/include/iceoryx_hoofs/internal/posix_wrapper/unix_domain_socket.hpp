@@ -28,6 +28,7 @@
 #include "iox/duration.hpp"
 #include "iox/filesystem.hpp"
 #include "iox/optional.hpp"
+#include <cassert>
 
 namespace iox
 {
@@ -52,7 +53,7 @@ class UnixDomainSocket
     using Builder_t = UnixDomainSocketBuilder;
 
     using UdsName_t = string<LONGEST_VALID_NAME>;
-    using Message_t = string<MAX_MESSAGE_SIZE>;
+    using Message_t = string<platform::IOX_UDS_SOCKET_MAX_MESSAGE_SIZE>;
 
     UnixDomainSocket() noexcept = delete;
     UnixDomainSocket(const UnixDomainSocket& other) = delete;
@@ -80,7 +81,7 @@ class UnixDomainSocket
 
     /// @brief try to send a message for a given timeout duration using std::string
     /// @param msg to send
-    /// @param timout for the send operation
+    /// @param timeout for the send operation
     /// @return IpcChannelError if error occured
     expected<void, IpcChannelError> timedSend(const std::string& msg, const units::Duration& timeout) const noexcept;
 
@@ -89,10 +90,35 @@ class UnixDomainSocket
     expected<std::string, IpcChannelError> receive() const noexcept;
 
     /// @brief try to receive message for a given timeout duration using std::string.
-    /// @param timout for the receive operation
+    /// @param timeout for the receive operation
     /// @return received message. In case of an error, IpcChannelError is returned and msg is empty.
     expected<std::string, IpcChannelError> timedReceive(const units::Duration& timeout) const noexcept;
 
+    /// @brief send a message using a dimension template containter.
+    /// @param msg to send
+    /// @return IpcChannelError if error occured
+    template <template <uint64_t> class C, uint64_t N>
+    expected<void, IpcChannelError> send(const C<N>& buf) const noexcept;
+
+    /// @brief try to send a message for a given timeout duration using a dimension template containter.
+    /// @param msg to send
+    /// @param timout for the send operation
+    /// @return IpcChannelError if error occured
+    template <template <uint64_t> class C, uint64_t N>
+    expected<void, IpcChannelError> timedSend(const C<N>& buf, const units::Duration& timeout) const noexcept;
+
+    /// @brief receive message using a dimension template containter.
+    /// @param buf message received
+    /// @return  IpcChannelError if error occured
+    template <template <uint64_t> class C, uint64_t N>
+    expected<void, IpcChannelError> receive(C<N>& buf) const noexcept;
+
+    /// @brief try to receive message for a given timeout duration using a dimension template containter.
+    /// @param buf message received
+    /// @param timeout for the receive operation
+    /// @return  IpcChannelError if error occured
+    template <template <uint64_t> class C, uint64_t N>
+    expected<void, IpcChannelError> timedReceive(C<N>& buf, const units::Duration& timeout) const noexcept;
   private:
     friend class UnixDomainSocketBuilderNoPathPrefix;
 
@@ -115,6 +141,9 @@ class UnixDomainSocket
                                                                const sockaddr_un& sockAddr,
                                                                IpcChannelSide channelSide) noexcept;
 
+    expected<void, IpcChannelError> send(const char* msg, uint64_t msgSize, const units::Duration& timeout) const noexcept;
+    expected<void, IpcChannelError> receive(char* msg, uint64_t msgSize, const units::Duration& timeout) const noexcept;
+
   private:
     static constexpr int32_t ERROR_CODE = -1;
     static constexpr int32_t INVALID_FD = -1;
@@ -125,6 +154,32 @@ class UnixDomainSocket
     sockaddr_un m_sockAddr{};
     uint64_t m_maxMessageSize{MAX_MESSAGE_SIZE};
 };
+
+template <template <uint64_t> class C, uint64_t N>
+expected<void, IpcChannelError> UnixDomainSocket::send(const C<N>& buf) const noexcept{
+  // we also support timedSend. The setsockopt call sets the timeout for all further sendto calls, so we must set
+  // it to 0 to turn the timeout off
+  return send(buf.c_str(), buf.size(), units::Duration::fromSeconds(0ULL)); 
+}
+
+template <template <uint64_t> class C, uint64_t N>
+expected<void, IpcChannelError> UnixDomainSocket::timedSend(const C<N>& buf, const units::Duration& timeout) const noexcept{
+  return send(buf.c_str(), buf.size(), timeout);
+}
+
+template <template <uint64_t> class C, uint64_t N>
+expected<void, IpcChannelError> UnixDomainSocket::receive(C<N>& buf) const noexcept{
+  static_assert(N <= platform::IOX_UDS_SOCKET_MAX_MESSAGE_SIZE, "Size exceeds transmission limit!");
+  // we also support timedSend. The setsockopt call sets the timeout for all further sendto calls, so we must set
+  // it to 0 to turn the timeout off
+  return receive(buf.data(), N, units::Duration::fromSeconds(0ULL)); 
+}
+
+template <template <uint64_t> class C, uint64_t N>
+expected<void, IpcChannelError> UnixDomainSocket::timedReceive(C<N>& buf, const units::Duration& timeout) const noexcept{
+  static_assert(N <= platform::IOX_UDS_SOCKET_MAX_MESSAGE_SIZE, "Size exceeds transmission limit!");
+  return receive(buf.data(), N, timeout);
+}
 
 class UnixDomainSocketBuilder
 {

@@ -272,17 +272,42 @@ expected<void, IpcChannelError> UnixDomainSocket::destroy() noexcept
     return ok();
 }
 
-expected<void, IpcChannelError> UnixDomainSocket::send(const std::string& msg) const noexcept
-{
-    // we also support timedSend. The setsockopt call sets the timeout for all further sendto calls, so we must set
-    // it to 0 to turn the timeout off
-    return timedSend(msg, units::Duration::fromSeconds(0ULL));
+expected<void, IpcChannelError> UnixDomainSocket::send(const std::string& msg) const noexcept{
+  // we also support timedSend. The setsockopt call sets the timeout for all further sendto calls, so we must set
+  // it to 0 to turn the timeout off
+  return send(msg.c_str(), msg.size(), units::Duration::fromSeconds(0ULL)); 
 }
 
-expected<void, IpcChannelError> UnixDomainSocket::timedSend(const std::string& msg,
-                                                            const units::Duration& timeout) const noexcept
+expected<void, IpcChannelError> UnixDomainSocket::timedSend(const std::string& msg, const units::Duration& timeout) const noexcept{
+  return send(msg.c_str(), msg.size(), timeout);
+}
+
+expected<std::string, IpcChannelError> UnixDomainSocket::receive() const noexcept{
+  // we also support timedSend. The setsockopt call sets the timeout for all further sendto calls, so we must set
+  // it to 0 to turn the timeout off
+  Message_t msg;
+  auto result = receive(msg.data(), msg.capacity(), units::Duration::fromSeconds(0ULL));
+
+  if(result.has_error()){
+    return err(result.error());
+  }
+  return ok<std::string>(msg.c_str());
+}
+
+expected<std::string, IpcChannelError> UnixDomainSocket::timedReceive(const units::Duration& timeout) const noexcept{
+  Message_t msg;
+  auto result = receive(msg.data(), msg.capacity(), timeout);
+
+  if(result.has_error()){
+    return err(result.error());
+  }
+  return ok<std::string>(msg.c_str());
+}
+
+expected<void, IpcChannelError>
+UnixDomainSocket::send(const char* msg, uint64_t msgSize, const units::Duration& timeout) const noexcept
 {
-    if (msg.size() > m_maxMessageSize)
+    if (msgSize > m_maxMessageSize)
     {
         return err(IpcChannelError::MESSAGE_TOO_LONG);
     }
@@ -303,7 +328,7 @@ expected<void, IpcChannelError> UnixDomainSocket::timedSend(const std::string& m
     {
         return err(errnoToEnum(setsockoptCall.error().errnum));
     }
-    auto sendCall = posixCall(iox_sendto)(m_sockfd, msg.c_str(), msg.size() + NULL_TERMINATOR_SIZE, 0, nullptr, 0)
+    auto sendCall = posixCall(iox_sendto)(m_sockfd, msg, msgSize + NULL_TERMINATOR_SIZE, 0, nullptr, 0)
                         .failureReturnValue(ERROR_CODE)
                         .evaluate();
 
@@ -314,18 +339,8 @@ expected<void, IpcChannelError> UnixDomainSocket::timedSend(const std::string& m
     return ok();
 }
 
-expected<std::string, IpcChannelError> UnixDomainSocket::receive() const noexcept
-{
-    // we also support timedReceive. The setsockopt call sets the timeout for all further recvfrom calls, so we must set
-    // it to 0 to turn the timeout off
-    struct timeval tv = {};
-    tv.tv_sec = 0;
-    tv.tv_usec = 0;
-
-    return timedReceive(units::Duration(tv));
-}
-
-expected<std::string, IpcChannelError> UnixDomainSocket::timedReceive(const units::Duration& timeout) const noexcept
+expected<void, IpcChannelError>
+UnixDomainSocket::receive(char* msg, uint64_t msgSize, const units::Duration& timeout) const noexcept
 {
     if (IpcChannelSide::CLIENT == m_channelSide)
     {
@@ -343,21 +358,18 @@ expected<std::string, IpcChannelError> UnixDomainSocket::timedReceive(const unit
     {
         return err(errnoToEnum(setsockoptCall.error().errnum));
     }
-    // NOLINTJUSTIFICATION needed for recvfrom
-    // NOLINTNEXTLINE(hicpp-avoid-c-arrays, cppcoreguidelines-avoid-c-arrays)
-    char message[MAX_MESSAGE_SIZE + 1];
 
-    auto recvCall = posixCall(iox_recvfrom)(m_sockfd, &message[0], MAX_MESSAGE_SIZE, 0, nullptr, nullptr)
+    auto recvCall = posixCall(iox_recvfrom)(m_sockfd, msg, msgSize - 2, 0, nullptr, nullptr)
                         .failureReturnValue(ERROR_CODE)
                         .suppressErrorMessagesForErrnos(EAGAIN, EWOULDBLOCK)
                         .evaluate();
-    message[MAX_MESSAGE_SIZE] = 0;
+    msg[msgSize - 1] = 0;
 
     if (recvCall.has_error())
     {
         return err(errnoToEnum(recvCall.error().errnum));
     }
-    return ok<std::string>(&message[0]);
+    return ok();
 }
 
 IpcChannelError UnixDomainSocket::errnoToEnum(const int32_t errnum) const noexcept
