@@ -65,11 +65,11 @@ class FixedPositionContainer final
     FixedPositionContainer() noexcept;
     ~FixedPositionContainer() noexcept;
 
-    FixedPositionContainer(const FixedPositionContainer&) noexcept = delete;
-    FixedPositionContainer(FixedPositionContainer&&) noexcept = delete;
+    FixedPositionContainer(const FixedPositionContainer&) noexcept;
+    FixedPositionContainer(FixedPositionContainer&&) noexcept;
 
-    FixedPositionContainer& operator=(const FixedPositionContainer&) noexcept = delete;
-    FixedPositionContainer& operator=(FixedPositionContainer&&) noexcept = delete;
+    FixedPositionContainer& operator=(const FixedPositionContainer&) noexcept;
+    FixedPositionContainer& operator=(FixedPositionContainer&&) noexcept;
 
     /// @brief Clears the container and calls the destructor on all contained elements
     void clear() noexcept;
@@ -241,9 +241,9 @@ class FixedPositionContainer final
         ///              - the slot the iterator point to is not in use
         IOX_NO_DISCARD Value& operator*() const
         {
-            iox::cxx::EnsuresWithMsg(m_index <= Index::LAST, "Access with invalid index!");
-            iox::cxx::EnsuresWithMsg(m_container.get().m_status[m_index] == SlotStatus::USED,
-                                     "Invalid access! Slot not in use!");
+            IOX_ENSURES_WITH_MSG(m_index <= Index::LAST, "Access with invalid index!");
+            IOX_ENSURES_WITH_MSG(m_container.get().m_status[m_index] == SlotStatus::USED,
+                                 "Invalid access! Slot not in use!");
             return m_container.get().m_data[m_index];
         }
 
@@ -254,9 +254,9 @@ class FixedPositionContainer final
         ///              - the slot the iterator point to is not in use
         IOX_NO_DISCARD Value* operator->() const
         {
-            iox::cxx::EnsuresWithMsg(m_index <= Index::LAST, "Access with invalid index!");
-            iox::cxx::EnsuresWithMsg(m_container.get().m_status[m_index] == SlotStatus::USED,
-                                     "Invalid access! Slot not in use!");
+            IOX_ENSURES_WITH_MSG(m_index <= Index::LAST, "Access with invalid index!");
+            IOX_ENSURES_WITH_MSG(m_container.get().m_status[m_index] == SlotStatus::USED,
+                                 "Invalid access! Slot not in use!");
             return &m_container.get().m_data[m_index];
         }
 
@@ -267,9 +267,9 @@ class FixedPositionContainer final
         ///              - the slot the iterator point to is not in use
         IOX_NO_DISCARD Value* to_ptr() const
         {
-            iox::cxx::EnsuresWithMsg(m_index <= Index::LAST, "Access with invalid index!");
-            iox::cxx::EnsuresWithMsg(m_container.get().m_status[m_index] == SlotStatus::USED,
-                                     "Invalid access! Slot not in use!");
+            IOX_ENSURES_WITH_MSG(m_index <= Index::LAST, "Access with invalid index!");
+            IOX_ENSURES_WITH_MSG(m_container.get().m_status[m_index] == SlotStatus::USED,
+                                 "Invalid access! Slot not in use!");
             return &m_container.get().m_data[m_index];
         }
 
@@ -316,6 +316,10 @@ class FixedPositionContainer final
         std::reference_wrapper<Container> m_container;
         IndexType m_index;
     };
+
+  private:
+    template <typename RhsType>
+    void copy_and_move_impl(RhsType&& rhs) noexcept;
 
   private:
     UninitializedArray<T, CAPACITY> m_data;
